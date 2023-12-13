@@ -26,7 +26,7 @@ line_markers = [".", ",", "o", "v", "^", "<", ">", "1", "2", "3", "4", "s", "p",
 
 # Define a class for analyzing child heartbeat data
 class ChildHeartBeat():
-    def __init__(self) -> None:
+    def __init__(self,resample_fac) -> None:
         """
         Initialize the ChildHeartBeat class.
 
@@ -36,12 +36,15 @@ class ChildHeartBeat():
         self.folder = str("ECGdata_child\\")
         self.files = ["abdomen1.txt", "abdomen2.txt", "abdomen3.txt", "thorax1.txt", "thorax2.txt"]
         self.dfs = ["abd1", "abd2", "abd3", "thr1", "thr2"]
-        self.data = {}
+        self.data = pd.DataFrame()
 
         for i in range(0, len(self.files)):
-            self.data[self.dfs[i]] = pd.read_csv(self.folder + self.files[i], sep=" ", names=[self.dfs[i]])
-        print(f"loaded {self.data.keys()}")
+            self.data[self.dfs[i]] = pd.read_csv(self.folder + self.files[i], sep=" ", names=[self.dfs[i]])[::resample_fac]
+  
 
+        self.data = self.data.reset_index(drop = True)
+        print(self.data)
+  
         self.Tend = 20  # seconds
         self.freqHz = int(len(self.data["abd1"]) / self.Tend)
         self.freqRad = self.freqHz * 2 * np.pi
@@ -58,9 +61,10 @@ class ChildHeartBeat():
         - tuple: Frequencies and corresponding Fourier transform values.
         """
         data = np.array(self.data[data_key])
+        print(len(data))
         yf = fft(data)
         xf = fftfreq(self.N, 1 / self.freqHz)[:self.N // 2]
-        return xf, 2.0 / self.N * np.abs(yf[0:self.N // 2])
+        return xf, (2.0 / self.N * np.abs(yf[0:self.N // 2]))
 
     def highpass(self, data_key, cutoff, order):
         """
@@ -78,41 +82,35 @@ class ChildHeartBeat():
         nyq = 0.5 * self.freqHz
         normal_cutoff = cutoff / nyq
         b, a = signal.butter(order, normal_cutoff, btype="high", analog=False)
-        y = signal.filtfilt(b, a, data, method='gust')
+        y = signal.filtfilt(b, a, data)
         return y
 
-    def plot_signal(self, y, x=None):
-        """
-        Plot a signal.
-
-        Parameters:
-        - y (array-like): Signal values.
-        - x (array-like, optional): X-axis values. Defaults to None.
-
-        Returns:
-        - matplotlib.figure.Figure: The created figure.
-        """
-        fig = plt.figure()
-        return fig
 
 # Entry point of the script
 if __name__ == "__main__":
     # Create an instance of the ChildHeartBeat class
-    C = ChildHeartBeat()
+    C = ChildHeartBeat(10)
 
     # Create a subplot with two rows and one column, sharing the x-axis
-    fig, axs = plt.subplots(2, layout = 'constrained', figsize=(10, 4), sharex=True)
+    fig, axs = plt.subplots(3, layout = 'constrained', figsize=(10, 4))
 
     # Plot raw and high-pass filtered signals for the "thr1" data file
     for file in C.dfs:
         axs[0].plot(C.data[file])
-        axs[1].plot(C.highpass(file, 50, 1))
+        axs[1].plot(C.highpass(file, 1, 10))
+
+        x,y = C.show_fourier(file)
+       
+        axs[2].plot(x,y)
 
     # Set titles for subplots
     axs[0].set_title("raw signal")
     axs[1].set_title("highpass output")
     axs[0].legend(C.dfs)
     axs[1].legend(C.dfs)
-
+    axs[2].legend(C.dfs)
+    axs[0].axhline(0)
+    axs[1].axhline(0)
+    axs[2].set_xlabel("freq [Hz]")
     # Display the plots
     plt.show()
